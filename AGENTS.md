@@ -1,163 +1,84 @@
-# Ear Scout — AGENTS.md
+# Audio Clarity — AGENTS.md
 System Agents & Architecture (Android)
 
-## 0) Product intent (plain English)
-Ear Scout is a **foreground listening assist** app:
-- Captures microphone audio
-- Applies lightweight processing (clarity filter + gain + limiter + optional system pre-processing)
-- Plays the result to the currently selected output route (typically Bluetooth earbuds/headphones)
-- Continues in the background via a **Foreground Service** + persistent notification
+## 0) Product Intent
+Audio Clarity is a **foreground listening-assist app** designed to enhance and clarify real-world sounds in real-time. It provides several powerful audio processing features that are fully configurable by the user.
 
-Optional roadmap: “Scout Mode” (event detection + boosted replay clips). Baseline is “Monitor/Passthrough Mode”.
+- Captures microphone audio.
+- Applies an advanced, multi-stage DSP chain for clarity.
+- Plays the result to a selected audio output (e.g., headphones).
+- Continues to run as a foreground service when the app is in the background.
 
-## 1) Non-negotiables (safety + compliance + usability)
-- Foreground session only: user must always be able to tell it’s running (persistent notification + in-app state).
-- No stealth/hidden behaviors. No “spy” positioning.
-- No speaker output by default (feedback risk). If allowed, require explicit “I understand” gating.
-- Safe output: hard limiter on playback + user-configurable gain cap.
-- Minimal permissions: `RECORD_AUDIO` required; `POST_NOTIFICATIONS` recommended.
+## 1) Core Features (Implemented)
 
-## 2) Runtime model (high level)
-A “listening session” is a stateful pipeline:
+*   **Real-Time Audio Passthrough:** The core feature of the app, providing a live, processed audio stream from the microphone to the user's headphones.
 
-Mic Input → (optional system pre-processing: AGC/NS/AEC) → App DSP (HPF/EQ + gain + limiter) → Output playback
+*   **Adaptive "Auto-Clarity" Mode:** A smart, automated mode that:
+    *   Uses a **Voice Activity Detector (VAD)** to identify when someone is speaking.
+    *   When speech is detected, it engages a **Pitch Detector** to find the fundamental frequency of that specific voice.
+    *   It then applies a dynamic **Parametric EQ** to boost that precise frequency, making that voice clearer and more prominent.
+    *   When speech stops, the effect is automatically disengaged.
 
-The pipeline is owned by a Foreground Service so it survives UI/background changes.
+*   **"Scout Mode" Instant Replay:**
+    *   The app continuously records the last 5 seconds of audio into a ring buffer.
+    *   The user can tap a "Replay" button at any time to instantly play back a boosted version of what they just missed. This works from both the app and the lock screen notification.
 
-## 3) Agents (components) and responsibilities
+*   **Advanced DSP Chain:** Users have manual control over a sophisticated set of audio effects:
+    *   **Adjustable Gain:** Amplify incoming audio.
+    *   **High-Pass Filter (HPF):** Cuts low-frequency rumble to improve speech intelligibility.
+    *   **Noise Gate:** Automatically silences the output during quiet moments to eliminate background hiss.
+    *   **System Effects:** Integrates with Android's built-in **Noise Suppressor (NS)**, **Acoustic Echo Canceler (AEC)**, and **Automatic Gain Control (AGC)**.
+    *   **Safety Limiter:** A hard limiter is always active to prevent loud noises or high gain from causing painfully loud output.
 
-### 3.1 UI/Control Agent (`MainActivity`)
-**Role:** Human controls + session visibility.  
-**Responsibilities:**
-- Request runtime permissions (`RECORD_AUDIO`, `POST_NOTIFICATIONS`).
-- Present controls:
-  - Start / Stop
-  - Gain slider
-  - Toggles: clarity, limiter, system effects (if supported)
-- Bind to `AudioService` via `Binder` and call service methods.
-- Reflect the service’s actual state (IDLE/STARTING/RUNNING/STOPPING/ERROR).
+*   **Robust Session Management:**
+    *   **Foreground Service:** All audio processing happens in a foreground service, allowing the app to run reliably in the background or with the screen off.
+    *   **Speaker Feedback Protection:** Automatically pauses audio if headphones are disconnected, preventing loud and unpleasant speaker feedback.
+    *   **Persistent Settings:** The app saves and restores all user-configured settings between sessions.
 
-### 3.2 Session Orchestrator Agent (`AudioService`)
-**Role:** Owns session lifecycle, threading, and reliability.  
-**Responsibilities:**
-- Promote to **Foreground Service** at start:
-  - persistent notification with Stop action
-  - notification channel management
-- Own session state machine:
-  - `IDLE`, `STARTING`, `RUNNING`, `STOPPING`, `ERROR`
-- Deterministic resource control:
-  - create/start/stop/release `AudioRecord`
-  - create/play/stop/release `AudioTrack`
-- Prevent races:
-  - `start()` and `stop()` idempotent
-  - guarded transitions
-- Apply configuration updates (gain/toggles) thread-safely.
+*   **Diagnostics & Logging:**
+    *   **Diagnostics Screen:** A dedicated screen displays live technical data, including the current audio device, supported system effects, and the real-time detected pitch.
+    *   **Diagnostic Logging:** The app logs detailed information about session states, audio parameters, and errors to aid in debugging.
 
-**Binder methods (example):**
-- `startAudioPassthrough()`
-- `stopAudioPassthrough()`
-- `setVolumeGain(float gain)`
-- `setOptions(Options opts)`
+## 2) Safety & Compliance
+-   **Foreground Visibility:** The app's active state is always visible via a persistent notification.
+-   **No Hidden Behavior:** There are no features that could be construed as enabling spying or stealth recording.
+-   **Minimal Permissions:** Requires only `RECORD_AUDIO` and `POST_NOTIFICATIONS` (on newer Android versions).
 
-### 3.3 Audio Capture Agent (`AudioInput`)
-**Role:** Configure and read microphone frames reliably.  
-**Responsibilities:**
-- Select sample rate + format (e.g., 44.1kHz, mono, PCM16).
-- Select an `AudioSource` appropriate for desired effects:
-  - `VOICE_COMMUNICATION` / `VOICE_RECOGNITION` can improve AEC/NS/AGC behavior on some devices.
-- Choose stable buffer sizes:
-  - base on `getMinBufferSize()` and pick a safe multiple.
-- Produce frames to DSP as PCM.
+## 3) Architectural Agents (Components)
 
-### 3.4 System Pre-Processing Agent (`AudioFxPreproc`)
-**Role:** Attach Android-provided effects when available.  
-**Responsibilities:**
-- Optionally attach/enable:
-  - `AutomaticGainControl`
-  - `NoiseSuppressor`
-  - `AcousticEchoCanceler`
-- Expose availability honestly (device-dependent).
-- If an effect can’t be enabled, surface this in UI/logs.
+*   **UI/Control Agent (`MainActivity`, `DiagnosticsActivity`):** Provides the user interface for controlling the app and viewing diagnostic data. Binds to the `AudioService` to control the audio session.
 
-### 3.5 DSP Agent (`DspChain`)
-**Role:** App-owned signal processing chain.  
-**Recommended baseline chain:**
-1) High-pass filter (rumble cut; “speech clarity” feel)  
-2) Gain multiply (user-controlled)  
-3) Hard limiter (prevents clipping spikes)  
-4) Optional: simple EQ preset for speech emphasis  
-5) Optional: noise gate (reduce hiss in quiet scenes)
+*   **Session Orchestrator Agent (`AudioService`):** Owns the audio session lifecycle, manages the foreground service, and handles audio routing and resource management. It exposes its state via `LiveData`.
 
-**Rules:**
-- No allocations in the audio loop.
-- Keep output in range (no overflow/clipping after limiter).
+*   **Audio Capture/Playback Agents:** Responsibilities are managed within the `AudioService`'s dedicated audio thread. This includes configuring and reading from `AudioRecord` and writing to `AudioTrack`.
 
-### 3.6 Output/Playback Agent (`AudioOutput`)
-**Role:** Play processed audio to the current route.  
-**Responsibilities:**
-- Configure `AudioTrack` for low-latency where possible.
-- Stable write loop (handle partial writes; track underruns).
-- Prefer stability over “chasing minimum latency”.
+*   **System Pre-Processing Agent (`AudioFxPreproc`):** Integrated into `AudioService`, this agent manages the Android-provided audio effects (AGC, NS, AEC).
 
-### 3.7 Notification/Controls Agent (`SessionNotification`)
-**Role:** Make the session visible and controllable outside the app.  
-**Responsibilities:**
-- Persistent notification while RUNNING:
-  - state + Stop action
-  - deep-link to app
+*   **DSP Agent (`DspChain`):** Contains the complete, app-owned signal processing chain, including the HPF, dynamic EQ, gain, noise gate, and limiter.
 
-### 3.8 Settings Agent (`SettingsRepo`)
-**Role:** Persist user preferences.  
-**Responsibilities:**
-- Store last gain, toggles, caps, etc.
-- Use `DataStore` (preferred) or SharedPreferences.
+*   **Specialized DSP Agents (`VoiceActivityDetector`, `PitchDetector`):** These classes contain the specific logic for detecting speech and estimating pitch, respectively. They are owned and used by the `AudioService`.
 
-### 3.9 Diagnostics Agent (`DiagLogger`)
-**Role:** Make debugging audio problems possible.  
-**Responsibilities:**
-- Log:
-  - session transitions
-  - buffer sizes / sample rate
-  - effect availability
-  - underruns/errors
-- Optional diagnostics screen:
-  - output route
-  - effect support
-  - session uptime counters
+*   **Notification/Controls Agent:** Implemented within the `AudioService`, this is responsible for the persistent notification, which includes actions for stopping the service or triggering an instant replay.
 
-### 3.10 Roadmap Agent (optional): Event Detection + Replay (`ScoutEngine`)
-**Role:** Detect events and play boosted “last N seconds” clips.  
-**Behavior:**
-- Maintain 3–10s ring buffer
-- Detector triggers → notification → boosted replay clip
-- Per-event Boost Profile presets (speech vs alarm vs general)
+*   **Settings Agent (`SettingsRepository`):** A simple class using `SharedPreferences` to persist all user settings.
 
-This is the Bluetooth-friendly way to deliver “I was alerted—boost what I missed.”
+*   **Diagnostics Agent (`DiagLogger`):** A static logger class used throughout the app to record diagnostic information.
 
-## 4) Threading & performance model
-- Main thread: UI only.
-- Audio thread: tight loop:
-  - `AudioRecord.read` → DSP → `AudioTrack.write`
-- No heavy work in audio thread (no DB/file IO).
+## 4) Threading Model
+-   **Main Thread:** UI and user interaction only.
+-   **Audio Thread:** A dedicated, high-priority thread inside the `AudioService` runs the tight `read -> process -> write` loop.
+-   **Replay Thread:** Replay playback occurs on a separate, short-lived thread to avoid blocking the main audio thread.
 
-Settings updates use atomics/volatile or a thread-safe queue.
+## 5) State Machine
+-   The `AudioService` follows a strict state machine: `IDLE` ↔ `STARTING` ↔ `RUNNING` ↔ `STOPPING`.
+-   State transitions are exposed to the UI via `LiveData`.
 
-## 5) State machine (authoritative)
-- `IDLE` → start() → `STARTING` → success → `RUNNING`
-- `RUNNING` → stop() → `STOPPING` → release → `IDLE`
-- Any fatal error → `ERROR` → stop() releases → `IDLE`
-
-## 6) Acceptance tests (manual)
-- Start session with permission granted → audio plays to headphones.
-- Limiter ON prevents harsh clipping at high gain.
-- Background/lock screen → session continues with persistent notification.
-- Stop from notification → session ends, notification removed.
-- Bluetooth disconnect mid-session → no crash; user can stop/start again.
-- Speaker feedback protection works (blocked or gated).
-
-## 7) PowerShell (Windows)
-```powershell
-.\gradlew clean
-.\gradlew test
-.\gradlew assembleDebug
-```
+## 6) Acceptance Tests (Manual)
+-   [x] Session starts and stops correctly from the UI.
+-   [x] Audio plays to headphones and continues when the app is backgrounded.
+-   [x] Speaker feedback protection correctly stops audio when headphones are disconnected.
+-   [x] Gain, HPF, and Noise Gate toggles work as expected in manual mode.
+-   [x] Enabling "Auto-Clarity" disables manual controls and automatically engages HPF/EQ during speech.
+-   [x] The "Replay" button (from app and notification) correctly plays back the last 5 seconds of audio.
+-   [x] The Diagnostics screen displays accurate, live data.
+-   [x] All settings are correctly saved and restored when the app is restarted.

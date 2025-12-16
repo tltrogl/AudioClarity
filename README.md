@@ -1,122 +1,71 @@
-# Ear Scout (Android) — Listening Assist (Passthrough)
+# Audio Clarity
 
-Ear Scout is a simple, robust Android app that captures microphone audio, applies lightweight processing for clarity and safety, and plays it back to your connected headphones/earbuds (including Bluetooth).
+**Audio Clarity** is a robust, feature-rich Android application designed to enhance and clarify real-world sounds in real-time. It acts as a powerful listening-assist tool, capturing microphone audio, applying a sophisticated set of digital signal processing (DSP) effects, and playing the result back to your headphones.
 
-This project is intentionally minimal: it’s built to “just work” and remain easy to maintain.
-
----
-
-## What it does
-- Foreground “Listening” session (**persistent notification** while active)
-- Microphone → processing → headphone/earbud playback
-- Voice-focused clarity filter (reduces low-frequency rumble)
-- Adjustable gain (volume boost) with a safety limiter
-- Optional Android pre-processing (AGC / Noise Suppression / Echo Cancel) when supported
-
-## What it does NOT do
-- No stealth mode
-- No hidden recording
-- No “listen through walls” claims
-- No cloud processing / accounts
+Built with a clean architecture and a focus on stability, this app is both a powerful utility and a demonstration of advanced Android audio processing techniques.
 
 ---
 
-## ⚠️ Safety warning (read this)
-**Use headphones/earbuds.**
-Do not run this app with the phone’s main speaker output while listening is active. The microphone can pick up speaker output and create an immediate, extremely loud feedback loop that can damage hearing and/or equipment.
+## Core Features
 
-Keep gain reasonable and enable the limiter.
+*   **Real-Time Audio Passthrough:** The core of the app. It provides a live, low-latency audio stream from the microphone to your headphones, running reliably in the background as a foreground service.
 
----
+*   **Adaptive "Auto-Clarity" Mode:** A smart, automated mode that intelligently enhances speech.
+    *   **Voice Activity Detection (VAD):** Automatically detects the presence of human speech in the audio stream.
+    *   **Pitch Tracking:** When speech is detected, it finds the fundamental frequency (pitch) of that specific voice.
+    *   **Dynamic Parametric EQ:** Applies a custom-tuned EQ filter to boost the precise frequencies of the detected voice, making it "pop" from the background noise.
 
-## Reality check: Bluetooth latency
-Bluetooth routing adds latency that varies by device and earbuds. This app prioritizes stability and predictable behavior over “perfect real-time” claims.
+*   **"Scout Mode" Instant Replay:** Never miss a thing. 
+    *   The app continuously records the last 5 seconds of audio into an in-memory ring buffer.
+    *   With a single tap on the "Replay" button (in-app or from the notification), you can instantly hear a boosted version of the last 5 seconds.
 
-If you want Bluetooth-first “works reliably” behavior, the recommended roadmap is **Scout Mode** (detect + boosted replay clip). See Roadmap.
+*   **Advanced Manual DSP Controls:** For users who want fine-grained control, the app offers a suite of manual toggles:
+    *   **Adjustable Gain:** Amplify sound with a simple slider.
+    *   **High-Pass Filter (HPF):** A clarity filter that cuts low-frequency rumble.
+    *   **Noise Gate:** Automatically mutes the output during quiet moments to eliminate background hiss.
+    *   **System Effects:** Integrates with Android's built-in **Noise Suppressor (NS)**, **Acoustic Echo Canceler (AEC)**, and **Automatic Gain Control (AGC)**.
 
----
+*   **Safety and Stability:**
+    *   **Hard Limiter:** A safety feature that is always active to prevent sudden loud noises or high gain settings from causing painfully loud audio spikes.
+    *   **Speaker Feedback Protection:** The app automatically stops audio passthrough if you disconnect your headphones, preventing a loud and dangerous feedback loop.
+    *   **Persistent Settings:** All your preferred settings are saved and automatically restored the next time you open the app.
 
-## Requirements
-- Android SDK 24+ (Android 7.0 Nougat) recommended baseline
-- A physical Android device (emulators often behave badly with audio)
-- Microphone permission
-- Headphones/earbuds (Bluetooth supported)
-
----
-
-## Permissions
-- **Microphone** (`RECORD_AUDIO`) — required to capture audio
-- **Notifications** (`POST_NOTIFICATIONS`) — recommended so the foreground session notification is visible and controllable
-
----
-
-## How to run (Android Studio)
-1. Open the project in **Android Studio**
-2. Connect a physical Android device
-3. Build & Run
-4. Grant Microphone + Notifications permissions when prompted
+*   **Developer-Focused:**
+    *   **Diagnostics Screen:** A dedicated screen displays live technical data for debugging and analysis, including the current audio output device, sample rate, buffer size, and live pitch detection frequency.
+    *   **Detailed Logging:** The app uses a custom logger to provide detailed insight into session states, audio parameters, and errors.
 
 ---
 
-## How to use
-1. Connect your Bluetooth earbuds/headphones
-2. Open Ear Scout
-3. Tap **Start**
-4. Adjust **Gain** carefully (start low)
-5. Lock the screen if you want — the session continues via the foreground service
-6. Tap **Stop** in the app or from the persistent notification
+## ⚠️ Safety Warning
+
+**Always use headphones or earbuds.**
+
+This application is designed for use with headphones. Running it with the phone's built-in speaker will cause the microphone to pick up its own output, creating an immediate and potentially damaging high-volume feedback loop.
 
 ---
 
-## Troubleshooting
-### No sound in earbuds
-- Confirm earbuds are the active output route and media volume is up.
-- Disconnect/reconnect earbuds and restart the session.
-- Start the session and wait 1–2 seconds before locking the screen (some devices route late).
+## How to Build and Run
 
-### Echo/feedback
-- You’re using speaker output or audio is leaking into the mic.
-- Lower gain, enable limiter, and keep the phone mic away from the earbud speaker.
-
-### Choppy audio
-- Increase buffer size (stability > low latency).
-- Disable AGC/NS/AEC toggles one by one to isolate device-specific problems.
+1.  Open the project in a recent version of **Android Studio**.
+2.  Connect a physical Android device.
+3.  Build and run the app.
+4.  Grant the required **Microphone** and **Notifications** permissions when prompted.
 
 ---
 
-## Project structure (recommended)
-- `app/` UI + service binding + notification UI
-- `core/audio/` AudioRecord/AudioTrack setup, routing helpers
-- `core/dsp/` HPF/EQ/limiter/gain chain
-- `core/fx/` Android AudioFX wrappers (AGC/NS/AEC)
-- `core/settings/` DataStore preferences
-- `core/diag/` logging + diagnostics screen (optional)
+## How to Use the App
+
+1.  Connect your headphones (Bluetooth or wired).
+2.  Open the Audio Clarity app.
+3.  Tap **Start Audio Passthrough** to begin the session.
+4.  **Adjust Gain:** Use the slider to increase or decrease the volume.
+5.  **Manual Mode:** Use the toggles to manually enable the High-Pass Filter, Noise Gate, or other system effects.
+6.  **Auto-Clarity Mode:** Enable the "Auto-Clarity" switch. The other DSP toggles will be disabled, and the app will automatically enhance speech for you.
+7.  **Replay:** Tap the **Replay Last 5s** button to hear a boosted version of what just happened. This can also be done from the notification.
+8.  **Stop:** Tap the **Stop** button in the app or in the persistent notification to end the session.
 
 ---
 
-## Build (Windows / PowerShell)
-```powershell
-.\gradlew assembleDebug
-```
+## Project Architecture
 
-## Test
-```powershell
-.\gradlew test
-```
-
----
-
-## Roadmap (Bluetooth-first “works” behavior)
-### Scout Mode: detect + boosted replay (recommended direction)
-Instead of promising real-time amplification over Bluetooth:
-- Maintain a rolling 3–10 second in-memory buffer
-- Detect events (speech nearby, alarm beeps, siren-like patterns, loud sudden peaks)
-- On trigger: notify + optionally play a boosted replay clip (“hear what just happened”)
-- Per-event Boost Profiles (speech clarity vs alarm emphasis), plus optional volume bump with restore
-
----
-
-## License
-Pick one:
-- MIT
-- Apache-2.0
+This project follows a clean, agent-based architecture designed for stability and maintainability. For a detailed breakdown of the components, their responsibilities, and the threading model, please see **`AGENTS.md`**.
