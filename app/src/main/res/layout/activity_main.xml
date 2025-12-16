@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Status: Stopped"
+        android:textSize="18sp"
+        android:layout_marginBottom="24dp" />
+
+    <Button
+        android:id="@+id/btnToggle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Start Audio Passthrough"
+        android:layout_marginBottom="24dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Digital Gain Boost"
+        android:layout_marginBottom="8dp" />
+
+    <SeekBar
+        android:id="@+id/sliderGain"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:max="50"
+        android:progress="0" />
+
+    <TextView
+        android:id="@+id/tvGainValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="1.0x"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="24dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Audio Processing"
+        android:textStyle="bold"
+        android:layout_marginBottom="12dp" />
+
+    <Switch
+        android:id="@+id/switchHpf"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Voice Clarity (High-Pass Filter)"
+        android:checked="true"
+        android:layout_marginBottom="8dp"/>
+
+    <Switch
+        android:id="@+id/switchNs"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Noise Suppressor (System)"
+        android:checked="true"
+        android:layout_marginBottom="8dp"/>
+
+    <Switch
+        android:id="@+id/switchAec"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Echo Cancellation (System)"
+        android:checked="true"
+        android:layout_marginBottom="8dp"/>
+
+    <Switch
+        android:id="@+id/switchAgc"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Automatic Gain Control (System)"
+        android:checked="false"
+        android:layout_marginBottom="8dp"/>
+
+    <Switch
+        android:id="@+id/switchAutoClarity"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Auto-Clarity" />
+
+    <Button
+        android:id="@+id/btnReplay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Replay Last 5s" />
+
+    <Switch
+        android:id="@+id/switchNoiseGate"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Noise Gate"
+        android:checked="false"
+        android:layout_marginBottom="8dp"/>
+    
+    <Button
+        android:id="@+id/btnDiagnostics"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="Diagnostics" />
+
+</LinearLayout>
