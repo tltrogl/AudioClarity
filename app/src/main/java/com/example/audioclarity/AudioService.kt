@@ -142,7 +142,7 @@ class AudioService : Service() {
         _state.postValue(ServiceState.STARTING)
         DiagLogger.logSession("STARTING")
         
-        if (isOutputtingToSpeaker()) {
+        if (!hasHeadphonesConnected()) {
             DiagLogger.log(DiagLogger.Level.WARN, "Headphones not connected. Aborting start.")
             Toast.makeText(this, "Headphones must be connected.", Toast.LENGTH_SHORT).show()
             _state.postValue(ServiceState.IDLE)
@@ -194,7 +194,8 @@ class AudioService : Service() {
                 gainFactor = dspChain.gainFactor * 1.5f // Boost gain by 50%
             }
 
-            boostedDsp.process(snapshot, snapshot.size)
+            val processedSnapshot = snapshot.copyOf()
+            boostedDsp.process(processedSnapshot, processedSnapshot.size)
             
             val replayTrack = AudioTrack.Builder()
                 .setAudioAttributes(
@@ -210,7 +211,7 @@ class AudioService : Service() {
                         .setChannelMask(channelConfigOut)
                         .build()
                 )
-                .setBufferSizeInBytes(snapshot.size * 2)
+                .setBufferSizeInBytes(processedSnapshot.size * 2)
                 .setTransferMode(AudioTrack.MODE_STATIC)
                 .build()
 
@@ -220,15 +221,15 @@ class AudioService : Service() {
             }
 
             try {
-                DiagLogger.log(DiagLogger.Level.INFO, "Playing back ${snapshot.size} boosted samples.")
+                DiagLogger.log(DiagLogger.Level.INFO, "Playing back ${processedSnapshot.size} boosted samples.")
                 // Mute live audio
                 val originalGain = dspChain.gainFactor
                 dspChain.gainFactor = 0f
 
-                replayTrack.write(snapshot, 0, snapshot.size)
+                replayTrack.write(processedSnapshot, 0, processedSnapshot.size)
                 replayTrack.play()
                 // This will block until playback is complete because it's a static track
-                Thread.sleep((snapshot.size.toFloat() / sampleRate * 1000).toLong() + 100)
+                Thread.sleep((processedSnapshot.size.toFloat() / sampleRate * 1000).toLong() + 100)
                 
                 // Restore live audio
                 dspChain.gainFactor = originalGain
@@ -242,14 +243,18 @@ class AudioService : Service() {
         }
     }
 
-    private fun isOutputtingToSpeaker(): Boolean {
-        val outputDevices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-        for (device in outputDevices) {
-            if (device.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
-                return true
+    private fun hasHeadphonesConnected(): Boolean {
+        val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        return outputs.any { dev ->
+            when (dev.type) {
+                AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                AudioDeviceInfo.TYPE_USB_HEADSET -> true
+                else -> false
             }
         }
-        return false
     }
 
     private fun registerAudioDeviceCallback() {
@@ -275,8 +280,8 @@ class AudioService : Service() {
     }
     
     private fun checkAudioOutput() {
-        if (_state.value == ServiceState.RUNNING && isOutputtingToSpeaker()) {
-            DiagLogger.log(DiagLogger.Level.WARN, "Headphones disconnected. Stopping audio.")
+        if (!hasHeadphonesConnected()) {
+            DiagLogger.log(DiagLogger.Level.WARN, "Headphones disconnected. Stopping.")
             stopAudioPassthrough()
             handler.post {
                 Toast.makeText(applicationContext, "Headphones disconnected. Audio stopped.", Toast.LENGTH_LONG).show()
@@ -488,12 +493,12 @@ class AudioService : Service() {
         val replayPendingIntent = PendingIntent.getService(this, 2, replayIntent, PendingIntent.FLAG_IMMUTABLE)
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Ear Scout Active")
+            .setContentTitle("Audio Clarity Active")
             .setContentText("Microphone audio is being passed through.")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
             .addAction(android.R.drawable.ic_media_pause, "Stop", stopPendingIntent)
-            .addAction(android.R.drawable.ic_menu_revert, "Replay", replayPendingIntent) // Added replay action
+            .addAction(android.R.drawable.ic_menu_revert, "Replay", replayPendingIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
