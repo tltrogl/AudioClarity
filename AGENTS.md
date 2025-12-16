@@ -2,22 +2,21 @@
 System Agents & Architecture (Android)
 
 ## 0) Product Intent
-Audio Clarity is a **foreground listening-assist app** designed to enhance and clarify real-world sounds in real-time. It provides several powerful audio processing features that are fully configurable by the user.
+Audio Clarity is a **listening-assist app** designed to enhance and clarify real-world sounds in real-time. It runs as a user-visible, background-capable service, applying powerful audio processing features that are fully configurable by the user.
 
 - Captures microphone audio.
 - Applies an advanced, multi-stage DSP chain for clarity.
 - Plays the result to a selected audio output (e.g., headphones).
-- Continues to run as a foreground service when the app is in the background.
+- Continues to run reliably in the background via a Foreground Service, even when the screen is off or the user switches apps.
 
 ## 1) Core Features (Implemented)
 
-*   **Real-Time Audio Passthrough:** The core feature of the app, providing a live, processed audio stream from the microphone to the user's headphones.
+*   **Background Operation:** The app is designed to run continuously as a background task. As long as the session is active, audio processing will continue even if you lock your screen or switch to another app. This is accomplished using a **Foreground Service**, which is Android's modern and required way to run long-lasting background tasks, indicated by a persistent notification.
 
-*   **Adaptive "Auto-Clarity" Mode:** A smart, automated mode that:
+*   **Adaptive "Auto-Clarity" Mode:** A smart, automated mode that intelligently enhances speech.
     *   Uses a **Voice Activity Detector (VAD)** to identify when someone is speaking.
     *   When speech is detected, it engages a **Pitch Detector** to find the fundamental frequency of that specific voice.
     *   It then applies a dynamic **Parametric EQ** to boost that precise frequency, making that voice clearer and more prominent.
-    *   When speech stops, the effect is automatically disengaged.
 
 *   **"Scout Mode" Instant Replay:**
     *   The app continuously records the last 5 seconds of audio into a ring buffer.
@@ -27,11 +26,10 @@ Audio Clarity is a **foreground listening-assist app** designed to enhance and c
     *   **Adjustable Gain:** Amplify incoming audio.
     *   **High-Pass Filter (HPF):** Cuts low-frequency rumble to improve speech intelligibility.
     *   **Noise Gate:** Automatically silences the output during quiet moments to eliminate background hiss.
-    *   **System Effects:** Integrates with Android's built-in **Noise Suppressor (NS)**, **Acoustic Echo Canceler (AEC)**, and **Automatic Gain Control (AGC)**.
+    *   **System Effects (Device-Dependent):** Integrates with Android's built-in **Noise Suppressor (NS)**, **Acoustic Echo Canceler (AEC)**, and **Automatic Gain Control (AGC)** when available on the device.
     *   **Safety Limiter:** A hard limiter is always active to prevent loud noises or high gain from causing painfully loud output.
 
-*   **Robust Session Management:**
-    *   **Foreground Service:** All audio processing happens in a foreground service, allowing the app to run reliably in the background or with the screen off.
+*   **Robust Session Management & Safety:**
     *   **Speaker Feedback Protection:** Automatically pauses audio if headphones are disconnected, preventing loud and unpleasant speaker feedback.
     *   **Persistent Settings:** The app saves and restores all user-configured settings between sessions.
 
@@ -40,7 +38,7 @@ Audio Clarity is a **foreground listening-assist app** designed to enhance and c
     *   **Diagnostic Logging:** The app logs detailed information about session states, audio parameters, and errors to aid in debugging.
 
 ## 2) Safety & Compliance
--   **Foreground Visibility:** The app's active state is always visible via a persistent notification.
+-   **User Visibility:** The app's active state is always visible via a persistent notification, as required by modern Android for background microphone use.
 -   **No Hidden Behavior:** There are no features that could be construed as enabling spying or stealth recording.
 -   **Minimal Permissions:** Requires only `RECORD_AUDIO` and `POST_NOTIFICATIONS` (on newer Android versions).
 
@@ -48,7 +46,7 @@ Audio Clarity is a **foreground listening-assist app** designed to enhance and c
 
 *   **UI/Control Agent (`MainActivity`, `DiagnosticsActivity`):** Provides the user interface for controlling the app and viewing diagnostic data. Binds to the `AudioService` to control the audio session.
 
-*   **Session Orchestrator Agent (`AudioService`):** Owns the audio session lifecycle, manages the foreground service, and handles audio routing and resource management. It exposes its state via `LiveData`.
+*   **Session Orchestrator Agent (`AudioService`):** Owns the audio session lifecycle, manages the foreground service for reliable background execution, and handles audio routing and resource management. It exposes its state via `LiveData`.
 
 *   **Audio Capture/Playback Agents:** Responsibilities are managed within the `AudioService`'s dedicated audio thread. This includes configuring and reading from `AudioRecord` and writing to `AudioTrack`.
 

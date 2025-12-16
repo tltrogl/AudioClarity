@@ -1,71 +1,86 @@
-# Audio Clarity
+# Audio Clarity — Real-Time Listening Assist (Android)
 
-**Audio Clarity** is a robust, feature-rich Android application designed to enhance and clarify real-world sounds in real-time. It acts as a powerful listening-assist tool, capturing microphone audio, applying a sophisticated set of digital signal processing (DSP) effects, and playing the result back to your headphones.
+**Audio Clarity** is a real-time listening-assist app: it captures microphone audio, applies voice-focused DSP (digital signal processing), and plays the result to your connected headphones/earbuds.
 
-Built with a clean architecture and a focus on stability, this app is both a powerful utility and a demonstration of advanced Android audio processing techniques.
+This is a **user-visible** listening session that runs reliably in the background.
 
 ---
 
 ## Core Features
 
-*   **Real-Time Audio Passthrough:** The core of the app. It provides a live, low-latency audio stream from the microphone to your headphones, running reliably in the background as a foreground service.
+### Runs in the Background
+- The app is designed to run continuously as a background task. As long as the session is active, audio processing will continue even if you lock your screen or switch to another app.
+- This is accomplished using a **Foreground Service**, which is Android's modern and required way to run long-lasting background tasks, indicated by a persistent notification.
 
-*   **Adaptive "Auto-Clarity" Mode:** A smart, automated mode that intelligently enhances speech.
-    *   **Voice Activity Detection (VAD):** Automatically detects the presence of human speech in the audio stream.
-    *   **Pitch Tracking:** When speech is detected, it finds the fundamental frequency (pitch) of that specific voice.
-    *   **Dynamic Parametric EQ:** Applies a custom-tuned EQ filter to boost the precise frequencies of the detected voice, making it "pop" from the background noise.
+### Adaptive Auto-Clarity (Speech Enhancement)
+- **Voice Activity Detection (VAD):** detects when speech is present.
+- **Pitch tracking:** estimates the voice's fundamental frequency.
+- **Dynamic "speech EQ":** boosts voice-relevant frequencies when speech is detected.
 
-*   **"Scout Mode" Instant Replay:** Never miss a thing. 
-    *   The app continuously records the last 5 seconds of audio into an in-memory ring buffer.
-    *   With a single tap on the "Replay" button (in-app or from the notification), you can instantly hear a boosted version of the last 5 seconds.
+### Scout Mode Replay (“What did they just say?”)
+- Continuously maintains a rolling in-memory buffer (last ~5 seconds).
+- One-tap **Replay** (in-app or notification) plays a boosted version of the last moments.
 
-*   **Advanced Manual DSP Controls:** For users who want fine-grained control, the app offers a suite of manual toggles:
-    *   **Adjustable Gain:** Amplify sound with a simple slider.
-    *   **High-Pass Filter (HPF):** A clarity filter that cuts low-frequency rumble.
-    *   **Noise Gate:** Automatically mutes the output during quiet moments to eliminate background hiss.
-    *   **System Effects:** Integrates with Android's built-in **Noise Suppressor (NS)**, **Acoustic Echo Canceler (AEC)**, and **Automatic Gain Control (AGC)**.
+### Manual DSP Controls
+- Adjustable gain (volume boost).
+- High-pass filter (cuts low rumble).
+- Noise gate (mutes output during quiet moments).
+- Optional Android system effects when supported (device-dependent):
+  - Noise Suppressor (NS)
+  - Acoustic Echo Canceler (AEC)
+  - Automatic Gain Control (AGC)
 
-*   **Safety and Stability:**
-    *   **Hard Limiter:** A safety feature that is always active to prevent sudden loud noises or high gain settings from causing painfully loud audio spikes.
-    *   **Speaker Feedback Protection:** The app automatically stops audio passthrough if you disconnect your headphones, preventing a loud and dangerous feedback loop.
-    *   **Persistent Settings:** All your preferred settings are saved and automatically restored the next time you open the app.
+### Safety & Stability
+- Always-on limiter (prevents harsh spikes at higher gain).
+- Automatically stops passthrough if headphones disconnect (prevents speaker feedback loops).
+- Persistent settings: restores your last configuration automatically.
 
-*   **Developer-Focused:**
-    *   **Diagnostics Screen:** A dedicated screen displays live technical data for debugging and analysis, including the current audio output device, sample rate, buffer size, and live pitch detection frequency.
-    *   **Detailed Logging:** The app uses a custom logger to provide detailed insight into session states, audio parameters, and errors.
-
----
-
-## ⚠️ Safety Warning
-
-**Always use headphones or earbuds.**
-
-This application is designed for use with headphones. Running it with the phone's built-in speaker will cause the microphone to pick up its own output, creating an immediate and potentially damaging high-volume feedback loop.
+### Developer/Diagnostics
+- Diagnostics screen: output device, sample rate, buffer size, pitch estimate, etc.
+- Detailed internal logging for session state + audio parameters.
 
 ---
 
-## How to Build and Run
-
-1.  Open the project in a recent version of **Android Studio**.
-2.  Connect a physical Android device.
-3.  Build and run the app.
-4.  Grant the required **Microphone** and **Notifications** permissions when prompted.
-
----
-
-## How to Use the App
-
-1.  Connect your headphones (Bluetooth or wired).
-2.  Open the Audio Clarity app.
-3.  Tap **Start Audio Passthrough** to begin the session.
-4.  **Adjust Gain:** Use the slider to increase or decrease the volume.
-5.  **Manual Mode:** Use the toggles to manually enable the High-Pass Filter, Noise Gate, or other system effects.
-6.  **Auto-Clarity Mode:** Enable the "Auto-Clarity" switch. The other DSP toggles will be disabled, and the app will automatically enhance speech for you.
-7.  **Replay:** Tap the **Replay Last 5s** button to hear a boosted version of what just happened. This can also be done from the notification.
-8.  **Stop:** Tap the **Stop** button in the app or in the persistent notification to end the session.
+## What This App Does NOT Do
+- **No stealth mode or invisible operation.** A persistent notification is always visible while the service is active, as required by Android for user safety and privacy.
+- No hidden/background recording.
+- No “listen through walls” claims.
+- No cloud processing, accounts, or uploading.
 
 ---
 
-## Project Architecture
+## ⚠️ Safety Warning (Read This)
+**Use headphones/earbuds.**
+Do not run mic passthrough through the phone speaker — it can cause immediate high-volume feedback.
 
-This project follows a clean, agent-based architecture designed for stability and maintainability. For a detailed breakdown of the components, their responsibilities, and the threading model, please see **`AGENTS.md`**.
+Keep gain reasonable.
+
+---
+
+## Reality Check: Latency
+Bluetooth latency varies by device + earbuds. This app prioritizes stability. For the most immediate, low-latency experience, wired or USB headphones are recommended.
+
+---
+
+## Build & Run
+1. Open in **Android Studio**
+2. Run on a physical Android device
+3. Grant **Microphone** + **Notifications** permissions
+
+---
+
+## How to Use
+1. Connect headphones/earbuds
+2. Tap **Start**
+3. Adjust **Gain**
+4. Either:
+   - Enable **Auto-Clarity** (speech enhancement), or
+   - Use manual toggles (HPF / Gate / system effects)
+5. Tap **Replay** to hear the last moments
+6. Tap **Stop** (in-app or notification)
+
+---
+
+## Architecture
+This project uses a clean, agent-based architecture aimed at stability and maintainability.
+See **`AGENTS.md`** for components and threading model.

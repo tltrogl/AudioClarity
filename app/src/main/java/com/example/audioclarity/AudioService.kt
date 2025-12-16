@@ -517,7 +517,7 @@ class AudioService : Service() {
                 "Audio Clarity Service",
                 NotificationManager.IMPORTANCE_LOW
             )
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val manager = getSystemService(Context.AUDIO_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
         }
     }
