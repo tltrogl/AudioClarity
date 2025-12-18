@@ -60,6 +60,8 @@ Keep gain reasonable.
 ## Reality Check: Latency
 Bluetooth latency varies by device + earbuds. This app prioritizes stability. For the most immediate, low-latency experience, wired or USB headphones are recommended.
 
+Use the **Calibrate** button in the main screen to run the built-in latency test. The calibration screen measures round-trip delay for your current audio path and saves it so playback buffers can better align with your device. Calibration temporarily adjusts routing for the test, then restores your prior audio routing so you can safely rerun it anytime.
+
 ---
 
 ## Build & Run

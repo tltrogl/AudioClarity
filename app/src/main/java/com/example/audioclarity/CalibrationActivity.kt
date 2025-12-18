@@ -48,7 +48,7 @@ class CalibrationActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_calibration)
 
-        latencyTester = LatencyTester()
+        latencyTester = LatencyTester(applicationContext)
         settingsRepo = SettingsRepository(this)
         btnStartCalibration = findViewById(R.id.btnStartCalibration)
         tvStatus = findViewById(R.id.tvCalibrationStatus)
@@ -82,6 +82,7 @@ class CalibrationActivity : AppCompatActivity() {
                 result.onSuccess { latencyMs ->
                     tvStatus.text = "Calibration complete!\nMeasured Latency: $latencyMs ms"
                     settingsRepo.saveLatency(latencyMs)
+                    btnStartCalibration.isEnabled = true
                     btnStartCalibration.text = "Start Calibration"
                     btnStartCalibration.setOnClickListener { checkPermissionAndRunCalibration() }
                 }.onFailure { error ->

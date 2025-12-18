@@ -68,6 +68,7 @@ class LatencyTester(private val context: Context) {
 
         // Temporarily set audio mode to in-communication to favor headset routing
         val previousMode = audioManager.mode
+        val previousSpeakerphoneOn = audioManager.isSpeakerphoneOn
         try {
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
             audioManager.isSpeakerphoneOn = false
@@ -252,6 +253,10 @@ class LatencyTester(private val context: Context) {
             // restore previous audio mode
             try {
                 audioManager.mode = previousMode
+            } catch (_: Exception) {
+            }
+            try {
+                audioManager.isSpeakerphoneOn = previousSpeakerphoneOn
             } catch (_: Exception) {
             }
         }
