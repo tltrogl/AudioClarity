@@ -38,6 +38,13 @@
             android:layout_marginTop="8dp"/>
 
         <TextView
+            android:id="@+id/tvDiagLatency"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Calibrated Latency: ..."
+            android:layout_marginTop="8dp"/>
+
+        <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="\nSystem Effects:"

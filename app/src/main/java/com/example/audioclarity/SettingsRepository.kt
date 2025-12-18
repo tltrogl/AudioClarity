@@ -10,7 +10,8 @@ data class AudioSettings(
     val aecEnabled: Boolean,
     val agcEnabled: Boolean,
     val autoClarityEnabled: Boolean,
-    val noiseGateEnabled: Boolean
+    val noiseGateEnabled: Boolean,
+    val calibratedLatencyMs: Int
 )
 
 class SettingsRepository(context: Context) {
@@ -25,7 +26,8 @@ class SettingsRepository(context: Context) {
         val agc = prefs.getBoolean(KEY_AGC, false)
         val autoClarity = prefs.getBoolean(KEY_AUTO_CLARITY, false)
         val noiseGate = prefs.getBoolean(KEY_NOISE_GATE, false)
-        return AudioSettings(gain, hpf, ns, aec, agc, autoClarity, noiseGate)
+        val latency = prefs.getInt(KEY_LATENCY, -1)
+        return AudioSettings(gain, hpf, ns, aec, agc, autoClarity, noiseGate, latency)
     }
 
     fun saveSettings(settings: AudioSettings) {
@@ -37,6 +39,14 @@ class SettingsRepository(context: Context) {
             putBoolean(KEY_AGC, settings.agcEnabled)
             putBoolean(KEY_AUTO_CLARITY, settings.autoClarityEnabled)
             putBoolean(KEY_NOISE_GATE, settings.noiseGateEnabled)
+            putInt(KEY_LATENCY, settings.calibratedLatencyMs)
+            apply()
+        }
+    }
+
+    fun saveLatency(latencyMs: Int) {
+        prefs.edit().apply {
+            putInt(KEY_LATENCY, latencyMs)
             apply()
         }
     }
@@ -50,5 +60,6 @@ class SettingsRepository(context: Context) {
         private const val KEY_AGC = "agc"
         private const val KEY_AUTO_CLARITY = "auto_clarity"
         private const val KEY_NOISE_GATE = "noise_gate"
+        private const val KEY_LATENCY = "latency"
     }
 }

@@ -13,9 +13,6 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
-import android.media.audiofx.AcousticEchoCanceler
-import android.media.audiofx.AutomaticGainControl
-import android.media.audiofx.NoiseSuppressor
 import android.os.Binder
 import android.os.Build
 import android.os.Handler
@@ -48,7 +45,7 @@ class AudioService : Service() {
     private val _diagnosticsData = MutableLiveData<DiagnosticsData>()
     val diagnosticsData: LiveData<DiagnosticsData> = _diagnosticsData
 
-    // Audio Config - Made public for diagnostics
+    // Audio Config
     val sampleRate = 44100
     var bufferSize = 0
         private set
@@ -56,8 +53,8 @@ class AudioService : Service() {
     private val channelConfigIn = AudioFormat.CHANNEL_IN_MONO
     private val channelConfigOut = AudioFormat.CHANNEL_OUT_MONO
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
-    
-    // Scout Mode Ring Buffer (5 seconds)
+
+    // Ring Buffer
     private val ringBuffer = RingBuffer(sampleRate * 5)
 
     // DSP
@@ -65,16 +62,9 @@ class AudioService : Service() {
     private val vad = VoiceActivityDetector()
     private var pitchDetector: PitchDetector? = null
 
-    // Android Effects
-    private var agc: AutomaticGainControl? = null
-    private var ns: NoiseSuppressor? = null
-    private var aec: AcousticEchoCanceler? = null
-    
     // Config Flags
-    private var enableAgc = false
-    private var enableNs = true
-    private var enableAec = true
     var isAutoClarityEnabled = false
+    private var calibratedLatencyMs = -1
 
     // Pitch tracking state
     @Volatile
@@ -122,11 +112,9 @@ class AudioService : Service() {
                 intent.extras?.let {
                     setVolumeGain(it.getFloat("gain", 1.0f))
                     setHpfEnabled(it.getBoolean("hpf", true))
-                    setNsEnabled(it.getBoolean("ns", true))
-                    setAecEnabled(it.getBoolean("aec", true))
-                    setAgcEnabled(it.getBoolean("agc", false))
                     isAutoClarityEnabled = it.getBoolean("auto_clarity", false)
                     setNoiseGateEnabled(it.getBoolean("noise_gate", false))
+                    calibratedLatencyMs = it.getInt("latency", -1)
                 }
                 startAudioPassthrough()
             }
@@ -141,7 +129,7 @@ class AudioService : Service() {
         if (_state.value != ServiceState.IDLE) return
         _state.postValue(ServiceState.STARTING)
         DiagLogger.logSession("STARTING")
-        
+
         if (!hasHeadphonesConnected()) {
             DiagLogger.log(DiagLogger.Level.WARN, "Headphones not connected. Aborting start.")
             Toast.makeText(this, "Headphones must be connected.", Toast.LENGTH_SHORT).show()
@@ -149,6 +137,11 @@ class AudioService : Service() {
             DiagLogger.logSession("IDLE")
             return
         }
+        
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        audioManager.isSpeakerphoneOn = false
+        audioManager.isBluetoothScoOn = true
+        audioManager.startBluetoothSco()
 
         startForegroundService()
         registerAudioDeviceCallback()
@@ -164,20 +157,24 @@ class AudioService : Service() {
         _state.postValue(ServiceState.STOPPING)
         DiagLogger.logSession("STOPPING")
         
+        audioManager.mode = AudioManager.MODE_NORMAL
+        audioManager.stopBluetoothSco()
+        audioManager.isBluetoothScoOn = false
+
         try {
             audioThread?.join(1000)
         } catch (e: InterruptedException) {
             DiagLogger.logError("Audio thread join interrupted", e)
         }
         audioThread = null
-        
+
         unregisterAudioDeviceCallback()
         stopForeground(STOP_FOREGROUND_REMOVE)
-        
+
         _state.postValue(ServiceState.IDLE)
         DiagLogger.logSession("IDLE")
     }
-    
+
     fun replayBoosted() {
         if (_state.value != ServiceState.RUNNING) return
         DiagLogger.log(DiagLogger.Level.INFO, "Replay triggered")
@@ -196,7 +193,7 @@ class AudioService : Service() {
 
             val processedSnapshot = snapshot.copyOf()
             boostedDsp.process(processedSnapshot, processedSnapshot.size)
-            
+
             val replayTrack = AudioTrack.Builder()
                 .setAudioAttributes(
                     android.media.AudioAttributes.Builder()
@@ -222,16 +219,13 @@ class AudioService : Service() {
 
             try {
                 DiagLogger.log(DiagLogger.Level.INFO, "Playing back ${processedSnapshot.size} boosted samples.")
-                // Mute live audio
                 val originalGain = dspChain.gainFactor
                 dspChain.gainFactor = 0f
 
                 replayTrack.write(processedSnapshot, 0, processedSnapshot.size)
                 replayTrack.play()
-                // This will block until playback is complete because it's a static track
                 Thread.sleep((processedSnapshot.size.toFloat() / sampleRate * 1000).toLong() + 100)
                 
-                // Restore live audio
                 dspChain.gainFactor = originalGain
 
             } catch (e: Exception) {
@@ -244,38 +238,44 @@ class AudioService : Service() {
     }
 
     private fun hasHeadphonesConnected(): Boolean {
-        val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-        return outputs.any { dev ->
-            when (dev.type) {
-                AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
-                AudioDeviceInfo.TYPE_WIRED_HEADSET,
-                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
-                AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
-                AudioDeviceInfo.TYPE_USB_HEADSET -> true
-                else -> false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            return outputs.any { dev ->
+                when (dev.type) {
+                    AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                    AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                    AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                    AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                    AudioDeviceInfo.TYPE_USB_HEADSET -> true
+                    else -> false
+                }
             }
+        } else {
+            @Suppress("DEPRECATION")
+            return audioManager.isWiredHeadsetOn || audioManager.isBluetoothA2dpOn
         }
     }
 
     private fun registerAudioDeviceCallback() {
-        if (audioDeviceCallback == null) {
-            audioDeviceCallback = object : android.media.AudioDeviceCallback() {
-                override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
-                    checkAudioOutput()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (audioDeviceCallback == null) {
+                audioDeviceCallback = object : android.media.AudioDeviceCallback() {
+                    override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {}
+                    override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+                        checkAudioOutput()
+                    }
                 }
-
-                override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
-                    checkAudioOutput()
-                }
+                audioManager.registerAudioDeviceCallback(audioDeviceCallback, handler)
             }
-            audioManager.registerAudioDeviceCallback(audioDeviceCallback, handler)
         }
     }
 
     private fun unregisterAudioDeviceCallback() {
-        audioDeviceCallback?.let {
-            audioManager.unregisterAudioDeviceCallback(it)
-            audioDeviceCallback = null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            audioDeviceCallback?.let {
+                audioManager.unregisterAudioDeviceCallback(it)
+                audioDeviceCallback = null
+            }
         }
     }
     
@@ -292,7 +292,7 @@ class AudioService : Service() {
     fun setVolumeGain(gain: Float) {
         dspChain.gainFactor = gain
     }
-    
+
     fun setHpfEnabled(enabled: Boolean) {
         if (!isAutoClarityEnabled) {
             dspChain.isHpfEnabled = enabled
@@ -302,85 +302,67 @@ class AudioService : Service() {
     fun setNoiseGateEnabled(enabled: Boolean) {
         dspChain.isNoiseGateEnabled = enabled
     }
-    
-    fun setAgcEnabled(enabled: Boolean) {
-        enableAgc = enabled
-        if (_state.value == ServiceState.RUNNING) {
-            agc?.enabled = enabled
-        }
-    }
-
-    fun setNsEnabled(enabled: Boolean) {
-        enableNs = enabled
-        if (_state.value == ServiceState.RUNNING) {
-            ns?.enabled = enabled
-        }
-    }
-
-    fun setAecEnabled(enabled: Boolean) {
-        enableAec = enabled
-        if (_state.value == ServiceState.RUNNING) {
-            aec?.enabled = enabled
-        }
-    }
 
     private fun runAudioLoop() {
-        bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfigIn, audioFormat)
-        if (bufferSize == AudioRecord.ERROR || bufferSize == AudioRecord.ERROR_BAD_VALUE) {
+        val baseBufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfigIn, audioFormat)
+        if (baseBufferSize == AudioRecord.ERROR || baseBufferSize == AudioRecord.ERROR_BAD_VALUE) {
             DiagLogger.log(DiagLogger.Level.WARN, "Bad buffer size, falling back.")
-             bufferSize = sampleRate / 10 // Fallback
+            bufferSize = sampleRate / 10 // Fallback
+        } else {
+            bufferSize = if (calibratedLatencyMs > 0) {
+                val latencyFrames = (calibratedLatencyMs / 1000f * sampleRate).toInt()
+                (latencyFrames / 4).coerceAtLeast(baseBufferSize)
+            } else {
+                baseBufferSize
+            }
         }
         DiagLogger.logAudioParams(sampleRate, bufferSize)
-        
+
         pitchDetector = PitchDetector(sampleRate, bufferSize)
 
         val readSize = bufferSize
         val audioBuffer = ShortArray(readSize)
 
-        val audioSource = MediaRecorder.AudioSource.VOICE_COMMUNICATION
+        val recorder: AudioRecord
+        val track: AudioTrack
 
-        val recorder = try {
-            AudioRecord(audioSource, sampleRate, channelConfigIn, audioFormat, readSize * 2)
-        } catch (e: SecurityException) {
-            DiagLogger.logError("AudioRecord creation failed (Security)", e)
+        try {
+            val trackBuilder = AudioTrack.Builder()
+                .setAudioAttributes(
+                    android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(audioFormat)
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(channelConfigOut)
+                        .build()
+                )
+                .setBufferSizeInBytes(readSize * 2)
+                .setTransferMode(AudioTrack.MODE_STREAM)
+
+            track = trackBuilder.build()
+
+            @Suppress("DEPRECATION")
+            recorder = AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, sampleRate, channelConfigIn, audioFormat, readSize * 2)
+
+        } catch (e: Exception) {
+            DiagLogger.logError("AudioTrack or AudioRecord Builder failed", e)
             _state.postValue(ServiceState.IDLE)
             return
         }
 
-        if (recorder.state != AudioRecord.STATE_INITIALIZED) {
-            DiagLogger.logError("AudioRecord failed to initialize")
-            _state.postValue(ServiceState.IDLE)
-            return
-        }
-
-        setupEffects(recorder.audioSessionId)
-
-        val track = AudioTrack.Builder()
-            .setAudioAttributes(
-                android.media.AudioAttributes.Builder()
-                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build()
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setEncoding(audioFormat)
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(channelConfigOut)
-                    .build()
-            )
-            .setBufferSizeInBytes(readSize * 2)
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .build()
-
-        if (track.state != AudioTrack.STATE_INITIALIZED) {
-            DiagLogger.logError("AudioTrack failed to initialize")
+        if (recorder.state != AudioRecord.STATE_INITIALIZED || track.state != AudioTrack.STATE_INITIALIZED) {
+            DiagLogger.logError("AudioTrack or AudioRecord failed to initialize")
             recorder.release()
-            releaseEffects()
+            track.release()
             _state.postValue(ServiceState.IDLE)
             return
         }
-        
+
         _state.postValue(ServiceState.RUNNING)
         DiagLogger.logSession("RUNNING")
         recorder.startRecording()
@@ -389,10 +371,8 @@ class AudioService : Service() {
         while (_state.value == ServiceState.RUNNING) {
             val readCount = recorder.read(audioBuffer, 0, readSize)
             if (readCount > 0) {
-                // Write to ring buffer BEFORE processing
                 ringBuffer.write(audioBuffer, readCount)
-                
-                // Auto-clarity logic
+
                 if (isAutoClarityEnabled) {
                     val isSpeech = vad.isSpeech(audioBuffer, readCount)
                     dspChain.isHpfEnabled = isSpeech
@@ -402,19 +382,16 @@ class AudioService : Service() {
                         val pitch = pitchDetector?.detect(audioBuffer, readCount) ?: 0.0f
                         lastDetectedPitch = pitch
                         if (pitch > 0) {
-                            // Smoothing logic
-                            if (kotlin.math.abs(pitch - lastStablePitch) < 25f) { // If new pitch is close to last one
+                            if (kotlin.math.abs(pitch - lastStablePitch) < 25f) { 
                                 pitchConsecutiveFrames++
                             } else {
                                 pitchConsecutiveFrames = 0
                                 lastStablePitch = pitch
                             }
 
-                            // Update the EQ only after a few stable frames
                             if (pitchConsecutiveFrames > 3) {
-                                DiagLogger.log(DiagLogger.Level.DEBUG, "Updating EQ for pitch: $lastStablePitch Hz")
                                 dspChain.updatePitchEq(lastStablePitch)
-                                pitchConsecutiveFrames = 0 // Reset after update
+                                pitchConsecutiveFrames = 0
                             }
                         }
                     } else {
@@ -425,7 +402,6 @@ class AudioService : Service() {
                 dspChain.process(audioBuffer, readCount)
                 track.write(audioBuffer, 0, readCount)
 
-                // Post state updates
                 _dspState.postValue(DspState(dspChain.isHpfEnabled, dspChain.isSpeechEqEnabled, dspChain.isNoiseGateEnabled))
                 _diagnosticsData.postValue(DiagnosticsData(sampleRate, bufferSize, lastDetectedPitch))
 
@@ -440,42 +416,9 @@ class AudioService : Service() {
             track.release()
             recorder.stop()
             recorder.release()
-            releaseEffects()
         } catch (e: Exception) {
             DiagLogger.logError("Resource release failed", e)
         }
-    }
-
-    private fun setupEffects(sessionId: Int) {
-        val agcAvailable = AutomaticGainControl.isAvailable()
-        DiagLogger.logEffect("AGC", agcAvailable)
-        if (agcAvailable) {
-            agc = AutomaticGainControl.create(sessionId)
-            agc?.enabled = enableAgc
-        }
-        
-        val nsAvailable = NoiseSuppressor.isAvailable()
-        DiagLogger.logEffect("NS", nsAvailable)
-        if (nsAvailable) {
-            ns = NoiseSuppressor.create(sessionId)
-            ns?.enabled = enableNs
-        }
-
-        val aecAvailable = AcousticEchoCanceler.isAvailable()
-        DiagLogger.logEffect("AEC", aecAvailable)
-        if (aecAvailable) {
-            aec = AcousticEchoCanceler.create(sessionId)
-            aec?.enabled = enableAec
-        }
-    }
-
-    private fun releaseEffects() {
-        agc?.release()
-        ns?.release()
-        aec?.release()
-        agc = null
-        ns = null
-        aec = null
     }
 
     private fun startForegroundService() {
@@ -486,7 +429,7 @@ class AudioService : Service() {
             action = ACTION_STOP
         }
         val stopPendingIntent = PendingIntent.getService(this, 1, stopIntent, PendingIntent.FLAG_IMMUTABLE)
-        
+
         val replayIntent = Intent(this, AudioService::class.java).apply { 
             action = ACTION_REPLAY
         }
@@ -502,11 +445,11 @@ class AudioService : Service() {
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
-        
-        if (Build.VERSION.SDK_INT >= 34) {
-             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
         } else {
-             startForeground(NOTIFICATION_ID, notification)
+            startForeground(NOTIFICATION_ID, notification)
         }
     }
 
@@ -517,7 +460,7 @@ class AudioService : Service() {
                 "Audio Clarity Service",
                 NotificationManager.IMPORTANCE_LOW
             )
-            val manager = getSystemService(Context.AUDIO_SERVICE) as NotificationManager
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
         }
     }

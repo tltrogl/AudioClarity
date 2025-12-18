@@ -4,7 +4,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
-import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
@@ -20,6 +19,7 @@ class DiagnosticsActivity : AppCompatActivity() {
     private var audioService: AudioService? = null
     private var isBound = false
     private lateinit var audioManager: AudioManager
+    private lateinit var settingsRepo: SettingsRepository
 
     private lateinit var tvOutputDevice: TextView
     private lateinit var tvSampleRate: TextView
@@ -28,11 +28,17 @@ class DiagnosticsActivity : AppCompatActivity() {
     private lateinit var tvNs: TextView
     private lateinit var tvAec: TextView
     private lateinit var tvPitch: TextView
+    private lateinit var tvLatency: TextView
 
     private val diagnosticsObserver = Observer<DiagnosticsData> { data ->
         tvSampleRate.text = "Sample Rate: ${data.sampleRate} Hz"
         tvBufferSize.text = "Buffer Size: ${data.bufferSize} samples"
-        tvPitch.text = if (data.detectedPitch > 0) "Detected Pitch: ${String.format("%.1f", data.detectedPitch)} Hz" else "Detected Pitch: N/A"
+        tvPitch.text = if (data.detectedPitch > 0) "Detected Pitch: ${
+            String.format(
+                "%.1f",
+                data.detectedPitch
+            )
+        } Hz" else "Detected Pitch: N/A"
     }
 
     private val connection = object : ServiceConnection {
@@ -54,7 +60,8 @@ class DiagnosticsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_diagnostics)
 
-        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+        settingsRepo = SettingsRepository(this)
 
         tvOutputDevice = findViewById(R.id.tvDiagOutputDevice)
         tvSampleRate = findViewById(R.id.tvDiagSampleRate)
@@ -63,7 +70,8 @@ class DiagnosticsActivity : AppCompatActivity() {
         tvNs = findViewById(R.id.tvDiagNs)
         tvAec = findViewById(R.id.tvDiagAec)
         tvPitch = findViewById(R.id.tvDiagPitch)
-        
+        tvLatency = findViewById(R.id.tvDiagLatency)
+
         updateStaticInfo()
     }
 
@@ -72,6 +80,8 @@ class DiagnosticsActivity : AppCompatActivity() {
         Intent(this, AudioService::class.java).also { intent ->
             bindService(intent, connection, Context.BIND_AUTO_CREATE)
         }
+        // Also refresh static info in case settings changed
+        updateStaticInfo()
     }
 
     override fun onStop() {
@@ -93,5 +103,10 @@ class DiagnosticsActivity : AppCompatActivity() {
         tvAgc.text = "AGC Available: ${AutomaticGainControl.isAvailable()}"
         tvNs.text = "NS Available: ${NoiseSuppressor.isAvailable()}"
         tvAec.text = "AEC Available: ${AcousticEchoCanceler.isAvailable()}"
+
+        // --- Calibrated Latency ---
+        val latency = settingsRepo.getSettings().calibratedLatencyMs
+        tvLatency.text =
+            if (latency > 0) "Calibrated Latency: $latency ms" else "Calibrated Latency: Not run"
     }
 }
