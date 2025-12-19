@@ -59,11 +59,15 @@ class AudioService : Service() {
 
     // DSP
     private lateinit var dspChain: DspChain
+    private val onnyxModel = OnnyxSpeechEqModel()
     private val vad = VoiceActivityDetector()
     private var pitchDetector: PitchDetector? = null
+    private var manualGraphicEqEnabled = false
+    private var manualGraphicEqGains = FloatArray(GraphicEqConfig.BAND_FREQUENCIES.size) { 0f }
+    private var lastOnnyxAppliedGains: FloatArray? = null
 
     // Config Flags
-    var isAutoClarityEnabled = false
+    private var isAutoClarityEnabled = false
     private var calibratedLatencyMs = -1
 
     // Pitch tracking state
@@ -112,12 +116,16 @@ class AudioService : Service() {
                 intent.extras?.let {
                     setVolumeGain(it.getFloat("gain", 1.0f))
                     setHpfEnabled(it.getBoolean("hpf", true))
-                    isAutoClarityEnabled = it.getBoolean("auto_clarity", false)
                     setNoiseGateEnabled(it.getBoolean("noise_gate", false))
                     calibratedLatencyMs = it.getInt("latency", -1)
-                    setGraphicEqEnabled(it.getBoolean("graphic_eq_enabled", false))
-                    it.getFloatArray("graphic_eq_gains")?.let { gains ->
-                        setGraphicEqGains(gains)
+                    manualGraphicEqEnabled = it.getBoolean("graphic_eq_enabled", false)
+                    manualGraphicEqGains = it.getFloatArray("graphic_eq_gains")
+                        ?: FloatArray(GraphicEqConfig.BAND_FREQUENCIES.size) { 0f }
+                    setAutoClarityEnabled(it.getBoolean("auto_clarity", false))
+                    if (!isAutoClarityEnabled) {
+                        applyManualGraphicEq()
+                    } else {
+                        applyOnnyxVoiceCurve(null)
                     }
                 }
                 startAudioPassthrough()
@@ -298,12 +306,33 @@ class AudioService : Service() {
     }
 
     fun setGraphicEqEnabled(enabled: Boolean) {
-        dspChain.isGraphicEqEnabled = enabled
+        manualGraphicEqEnabled = enabled
+        if (isAutoClarityEnabled) {
+            applyOnnyxVoiceCurve(lastDetectedPitch.takeIf { it > 0 })
+        } else {
+            applyManualGraphicEq()
+        }
     }
 
     fun setGraphicEqGains(gainsDb: FloatArray) {
-        dspChain.setGraphicEqGains(gainsDb)
+        manualGraphicEqGains = gainsDb.copyOf()
+        if (isAutoClarityEnabled) {
+            applyOnnyxVoiceCurve(lastDetectedPitch.takeIf { it > 0 })
+        } else {
+            applyManualGraphicEq()
+        }
     }
+
+    fun setAutoClarityEnabled(enabled: Boolean) {
+        isAutoClarityEnabled = enabled
+        if (enabled) {
+            applyOnnyxVoiceCurve(lastDetectedPitch.takeIf { it > 0 })
+        } else {
+            applyManualGraphicEq()
+        }
+    }
+
+    fun isAutoClarityEnabled(): Boolean = isAutoClarityEnabled
 
     fun setHpfEnabled(enabled: Boolean) {
         if (!isAutoClarityEnabled) {
@@ -482,6 +511,23 @@ class AudioService : Service() {
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
         }
+    }
+
+    private fun applyManualGraphicEq() {
+        dspChain.isGraphicEqEnabled = manualGraphicEqEnabled
+        dspChain.setGraphicEqGains(manualGraphicEqGains)
+        lastOnnyxAppliedGains = null
+    }
+
+    private fun applyOnnyxVoiceCurve(pitchHz: Float?) {
+        val recommended = onnyxModel.recommendVoiceCurve(
+            pitchHz = pitchHz,
+            baseGainsDb = manualGraphicEqGains
+        )
+        if (lastOnnyxAppliedGains?.contentEquals(recommended) == true) return
+        dspChain.isGraphicEqEnabled = true
+        dspChain.setGraphicEqGains(recommended)
+        lastOnnyxAppliedGains = recommended
     }
 
     companion object {

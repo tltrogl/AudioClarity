@@ -45,7 +45,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val dspStateObserver = Observer<DspState> { state ->
-        if (isBound && audioService?.isAutoClarityEnabled == true) {
+        if (isBound && audioService?.isAutoClarityEnabled() == true) {
             // Update the visual state of the toggles even when they are disabled
             switchHpf.isChecked = state.isHpfEnabled
             switchNoiseGate.isChecked = state.isNoiseGateEnabled
@@ -195,7 +195,7 @@ class MainActivity : AppCompatActivity() {
         val settings = settingsRepo.getSettings()
 
         service.setHpfEnabled(settings.hpfEnabled)
-        service.isAutoClarityEnabled = settings.autoClarityEnabled
+        service.setAutoClarityEnabled(settings.autoClarityEnabled)
         service.setNoiseGateEnabled(settings.noiseGateEnabled)
         service.setVolumeGain(settings.gain)
         service.setGraphicEqEnabled(settings.graphicEqEnabled)
