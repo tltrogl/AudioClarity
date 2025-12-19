@@ -28,6 +28,7 @@
         </activity>
         <activity android:name=".DiagnosticsActivity" />
         <activity android:name=".CalibrationActivity" />
+        <activity android:name=".EqualizerActivity" />
 
         <service
             android:name=".AudioService"

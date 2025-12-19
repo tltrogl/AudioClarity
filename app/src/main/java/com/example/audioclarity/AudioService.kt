@@ -59,11 +59,15 @@ class AudioService : Service() {
 
     // DSP
     private lateinit var dspChain: DspChain
+    private lateinit var onnyxModel: OnnyxSpeechEqModel
     private val vad = VoiceActivityDetector()
     private var pitchDetector: PitchDetector? = null
+    private var manualGraphicEqEnabled = false
+    private var manualGraphicEqGains = FloatArray(GraphicEqConfig.BAND_FREQUENCIES.size) { 0f }
+    private var lastOnnyxAppliedGains: FloatArray? = null
 
     // Config Flags
-    var isAutoClarityEnabled = false
+    private var isAutoClarityEnabled = false
     private var calibratedLatencyMs = -1
 
     // Pitch tracking state
@@ -72,6 +76,8 @@ class AudioService : Service() {
         private set
     private var lastStablePitch = 0f
     private var pitchConsecutiveFrames = 0
+    private var lastAudioFrame: ShortArray? = null
+    private var lastAudioFrameSize: Int = 0
 
     // Audio Output Monitoring
     private lateinit var audioManager: AudioManager
@@ -92,6 +98,7 @@ class AudioService : Service() {
         DiagLogger.log(DiagLogger.Level.INFO, "Service creating")
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         dspChain = DspChain(sampleRate)
+        onnyxModel = OnnyxSpeechEqModel(applicationContext)
         createNotificationChannel()
     }
 
@@ -112,9 +119,17 @@ class AudioService : Service() {
                 intent.extras?.let {
                     setVolumeGain(it.getFloat("gain", 1.0f))
                     setHpfEnabled(it.getBoolean("hpf", true))
-                    isAutoClarityEnabled = it.getBoolean("auto_clarity", false)
                     setNoiseGateEnabled(it.getBoolean("noise_gate", false))
                     calibratedLatencyMs = it.getInt("latency", -1)
+                    manualGraphicEqEnabled = it.getBoolean("graphic_eq_enabled", false)
+                    manualGraphicEqGains = it.getFloatArray("graphic_eq_gains")
+                        ?: FloatArray(GraphicEqConfig.BAND_FREQUENCIES.size) { 0f }
+                    setAutoClarityEnabled(it.getBoolean("auto_clarity", false))
+                    if (!isAutoClarityEnabled) {
+                        applyManualGraphicEq()
+                    } else {
+                        applyOnnyxVoiceCurve(null)
+                    }
                 }
                 startAudioPassthrough()
             }
@@ -293,6 +308,35 @@ class AudioService : Service() {
         dspChain.gainFactor = gain
     }
 
+    fun setGraphicEqEnabled(enabled: Boolean) {
+        manualGraphicEqEnabled = enabled
+        if (isAutoClarityEnabled) {
+            applyOnnyxVoiceCurve(lastDetectedPitch.takeIf { it > 0 })
+        } else {
+            applyManualGraphicEq()
+        }
+    }
+
+    fun setGraphicEqGains(gainsDb: FloatArray) {
+        manualGraphicEqGains = gainsDb.copyOf()
+        if (isAutoClarityEnabled) {
+            applyOnnyxVoiceCurve(lastDetectedPitch.takeIf { it > 0 })
+        } else {
+            applyManualGraphicEq()
+        }
+    }
+
+    fun setAutoClarityEnabled(enabled: Boolean) {
+        isAutoClarityEnabled = enabled
+        if (enabled) {
+            applyOnnyxVoiceCurve(lastDetectedPitch.takeIf { it > 0 }, lastAudioFrame, lastAudioFrameSize)
+        } else {
+            applyManualGraphicEq()
+        }
+    }
+
+    fun isAutoClarityEnabled(): Boolean = isAutoClarityEnabled
+
     fun setHpfEnabled(enabled: Boolean) {
         if (!isAutoClarityEnabled) {
             dspChain.isHpfEnabled = enabled
@@ -394,15 +438,28 @@ class AudioService : Service() {
                                 pitchConsecutiveFrames = 0
                             }
                         }
+                        lastAudioFrame = audioBuffer.copyOf(readCount)
+                        lastAudioFrameSize = readCount
+                        applyOnnyxVoiceCurve(lastStablePitch.takeIf { it > 0 }, lastAudioFrame, lastAudioFrameSize)
                     } else {
                         lastDetectedPitch = 0f
                     }
+                } else {
+                    lastAudioFrame = audioBuffer.copyOf(readCount)
+                    lastAudioFrameSize = readCount
                 }
 
                 dspChain.process(audioBuffer, readCount)
                 track.write(audioBuffer, 0, readCount)
 
-                _dspState.postValue(DspState(dspChain.isHpfEnabled, dspChain.isSpeechEqEnabled, dspChain.isNoiseGateEnabled))
+                _dspState.postValue(
+                    DspState(
+                        dspChain.isHpfEnabled,
+                        dspChain.isSpeechEqEnabled,
+                        dspChain.isNoiseGateEnabled,
+                        dspChain.isGraphicEqEnabled
+                    )
+                )
                 _diagnosticsData.postValue(DiagnosticsData(sampleRate, bufferSize, lastDetectedPitch))
 
             } else {
@@ -463,6 +520,26 @@ class AudioService : Service() {
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
         }
+    }
+
+    private fun applyManualGraphicEq() {
+        dspChain.isGraphicEqEnabled = manualGraphicEqEnabled
+        dspChain.setGraphicEqGains(manualGraphicEqGains)
+        lastOnnyxAppliedGains = null
+    }
+
+    private fun applyOnnyxVoiceCurve(pitchHz: Float?, audioFrame: ShortArray?, frameSize: Int) {
+        val frame = audioFrame ?: return applyManualGraphicEq()
+        val recommended = onnyxModel.recommendVoiceCurve(
+            audioFrame = frame,
+            validSamples = frameSize,
+            pitchHz = pitchHz,
+            baseGainsDb = manualGraphicEqGains
+        )
+        if (lastOnnyxAppliedGains?.contentEquals(recommended) == true) return
+        dspChain.isGraphicEqEnabled = true
+        dspChain.setGraphicEqGains(recommended)
+        lastOnnyxAppliedGains = recommended
     }
 
     companion object {

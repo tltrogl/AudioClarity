@@ -8,4 +8,9 @@
     <string name="start_audio_passthrough">Start Audio Passthrough</string>
     <string name="stop_audio_passthrough">Stop Audio Passthrough</string>
     <string name="mic_permission_required">Microphone permission is required.</string>
+    <string name="equalizer_title">Full-Band Equalizer</string>
+    <string name="equalizer_enable">Enable Equalizer</string>
+    <string name="equalizer_description">Adjust 10 bands from 31 Hz to 16 kHz (-12 dB to +12 dB).</string>
+    <string name="equalizer_reset">Reset Bands</string>
+    <string name="equalizer_nav">Equalizer</string>
 </resources>

@@ -11,7 +11,9 @@ data class AudioSettings(
     val agcEnabled: Boolean,
     val autoClarityEnabled: Boolean,
     val noiseGateEnabled: Boolean,
-    val calibratedLatencyMs: Int
+    val calibratedLatencyMs: Int,
+    val graphicEqEnabled: Boolean,
+    val graphicEqGainsDb: List<Float>
 )
 
 class SettingsRepository(context: Context) {
@@ -27,7 +29,11 @@ class SettingsRepository(context: Context) {
         val autoClarity = prefs.getBoolean(KEY_AUTO_CLARITY, false)
         val noiseGate = prefs.getBoolean(KEY_NOISE_GATE, false)
         val latency = prefs.getInt(KEY_LATENCY, -1)
-        return AudioSettings(gain, hpf, ns, aec, agc, autoClarity, noiseGate, latency)
+        val eqEnabled = prefs.getBoolean(KEY_EQ_ENABLED, false)
+        val eqGains = GraphicEqConfig.BAND_FREQUENCIES.indices.map { index ->
+            prefs.getFloat("$KEY_EQ_BAND_PREFIX$index", 0f)
+        }
+        return AudioSettings(gain, hpf, ns, aec, agc, autoClarity, noiseGate, latency, eqEnabled, eqGains)
     }
 
     fun saveSettings(settings: AudioSettings) {
@@ -40,6 +46,10 @@ class SettingsRepository(context: Context) {
             putBoolean(KEY_AUTO_CLARITY, settings.autoClarityEnabled)
             putBoolean(KEY_NOISE_GATE, settings.noiseGateEnabled)
             putInt(KEY_LATENCY, settings.calibratedLatencyMs)
+            putBoolean(KEY_EQ_ENABLED, settings.graphicEqEnabled)
+            settings.graphicEqGainsDb.forEachIndexed { index, gainDb ->
+                putFloat("$KEY_EQ_BAND_PREFIX$index", gainDb)
+            }
             apply()
         }
     }
@@ -61,5 +71,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_AUTO_CLARITY = "auto_clarity"
         private const val KEY_NOISE_GATE = "noise_gate"
         private const val KEY_LATENCY = "latency"
+        private const val KEY_EQ_ENABLED = "graphic_eq_enabled"
+        private const val KEY_EQ_BAND_PREFIX = "graphic_eq_band_"
     }
 }

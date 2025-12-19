@@ -31,6 +31,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnReplay: Button
     private lateinit var btnDiagnostics: Button
     private lateinit var btnCalibrate: Button
+    private lateinit var btnEqualizer: Button
     private lateinit var tvStatus: TextView
     private lateinit var sliderGain: SeekBar
     private lateinit var tvGainValue: TextView
@@ -44,7 +45,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val dspStateObserver = Observer<DspState> { state ->
-        if (isBound && audioService?.isAutoClarityEnabled == true) {
+        if (isBound && audioService?.isAutoClarityEnabled() == true) {
             // Update the visual state of the toggles even when they are disabled
             switchHpf.isChecked = state.isHpfEnabled
             switchNoiseGate.isChecked = state.isNoiseGateEnabled
@@ -99,6 +100,7 @@ class MainActivity : AppCompatActivity() {
         btnReplay = findViewById(R.id.btnReplay)
         btnDiagnostics = findViewById(R.id.btnDiagnostics)
         btnCalibrate = findViewById(R.id.btnCalibrate)
+        btnEqualizer = findViewById(R.id.btnEqualizer)
         sliderGain = findViewById(R.id.sliderGain)
         tvGainValue = findViewById(R.id.tvGainValue)
 
@@ -120,6 +122,10 @@ class MainActivity : AppCompatActivity() {
 
         btnCalibrate.setOnClickListener {
             startActivity(Intent(this, CalibrationActivity::class.java))
+        }
+
+        btnEqualizer.setOnClickListener {
+            startActivity(Intent(this, EqualizerActivity::class.java))
         }
 
         sliderGain.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -164,15 +170,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun saveSettings() {
         val gain = 1.0f + (sliderGain.progress * 0.08f)
-        val settings = AudioSettings(
+        val existing = settingsRepo.getSettings()
+        val settings = existing.copy(
             gain = gain,
             hpfEnabled = switchHpf.isChecked,
             nsEnabled = false, // Obsolete
             aecEnabled = false, // Obsolete
             agcEnabled = false, // Obsolete
             autoClarityEnabled = switchAutoClarity.isChecked,
-            noiseGateEnabled = switchNoiseGate.isChecked,
-            calibratedLatencyMs = settingsRepo.getSettings().calibratedLatencyMs // Preserve existing value
+            noiseGateEnabled = switchNoiseGate.isChecked
         )
         settingsRepo.saveSettings(settings)
     }
@@ -189,9 +195,11 @@ class MainActivity : AppCompatActivity() {
         val settings = settingsRepo.getSettings()
 
         service.setHpfEnabled(settings.hpfEnabled)
-        service.isAutoClarityEnabled = settings.autoClarityEnabled
+        service.setAutoClarityEnabled(settings.autoClarityEnabled)
         service.setNoiseGateEnabled(settings.noiseGateEnabled)
         service.setVolumeGain(settings.gain)
+        service.setGraphicEqEnabled(settings.graphicEqEnabled)
+        service.setGraphicEqGains(settings.graphicEqGainsDb.toFloatArray())
     }
 
     override fun onStart() {
@@ -254,6 +262,8 @@ class MainActivity : AppCompatActivity() {
                 putExtra("auto_clarity", settings.autoClarityEnabled)
                 putExtra("noise_gate", settings.noiseGateEnabled)
                 putExtra("latency", settings.calibratedLatencyMs)
+                putExtra("graphic_eq_enabled", settings.graphicEqEnabled)
+                putExtra("graphic_eq_gains", settings.graphicEqGainsDb.toFloatArray())
             }
             startService(startIntent)
         } else if (currentState == ServiceState.RUNNING) {

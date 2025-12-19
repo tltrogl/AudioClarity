@@ -16,6 +16,7 @@ This is a **user-visible** listening session that runs reliably in the backgroun
 - **Voice Activity Detection (VAD):** detects when speech is present.
 - **Pitch tracking:** estimates the voice's fundamental frequency.
 - **Dynamic "speech EQ":** boosts voice-relevant frequencies when speech is detected.
+- **Onnyx-driven auto EQ:** automatically shapes the 10-band EQ toward speech intelligibility (keeps manual EQ intact when Auto-Clarity is off) using the Silero VAD ONNX model.
 
 ### Scout Mode Replay (“What did they just say?”)
 - Continuously maintains a rolling in-memory buffer (last ~5 seconds).
@@ -25,6 +26,7 @@ This is a **user-visible** listening session that runs reliably in the backgroun
 - Adjustable gain (volume boost).
 - High-pass filter (cuts low rumble).
 - Noise gate (mutes output during quiet moments).
+- Full-spectrum 10-band graphic EQ (31 Hz → 16 kHz).
 - Optional Android system effects when supported (device-dependent):
   - Noise Suppressor (NS)
   - Acoustic Echo Canceler (AEC)
@@ -60,6 +62,8 @@ Keep gain reasonable.
 ## Reality Check: Latency
 Bluetooth latency varies by device + earbuds. This app prioritizes stability. For the most immediate, low-latency experience, wired or USB headphones are recommended.
 
+Use the **Calibrate** button in the main screen to run the built-in latency test. The calibration screen measures round-trip delay for your current audio path and saves it so playback buffers can better align with your device. Calibration temporarily adjusts routing for the test, then restores your prior audio routing so you can safely rerun it anytime.
+
 ---
 
 ## Build & Run
@@ -76,6 +80,7 @@ Bluetooth latency varies by device + earbuds. This app prioritizes stability. Fo
 4. Either:
    - Enable **Auto-Clarity** (speech enhancement), or
    - Use manual toggles (HPF / Gate / system effects)
+   - Open **Equalizer** to sculpt the full-band EQ
 5. Tap **Replay** to hear the last moments
 6. Tap **Stop** (in-app or notification)
 
