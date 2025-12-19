@@ -16,7 +16,7 @@ This is a **user-visible** listening session that runs reliably in the backgroun
 - **Voice Activity Detection (VAD):** detects when speech is present.
 - **Pitch tracking:** estimates the voice's fundamental frequency.
 - **Dynamic "speech EQ":** boosts voice-relevant frequencies when speech is detected.
-- **Onnyx-driven auto EQ:** automatically shapes the 10-band EQ toward speech intelligibility (keeps manual EQ intact when Auto-Clarity is off).
+- **Onnyx-driven auto EQ:** automatically shapes the 10-band EQ toward speech intelligibility (keeps manual EQ intact when Auto-Clarity is off) using the Silero VAD ONNX model.
 
 ### Scout Mode Replay (“What did they just say?”)
 - Continuously maintains a rolling in-memory buffer (last ~5 seconds).

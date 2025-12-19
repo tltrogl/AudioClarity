@@ -59,7 +59,7 @@ class AudioService : Service() {
 
     // DSP
     private lateinit var dspChain: DspChain
-    private val onnyxModel = OnnyxSpeechEqModel()
+    private lateinit var onnyxModel: OnnyxSpeechEqModel
     private val vad = VoiceActivityDetector()
     private var pitchDetector: PitchDetector? = null
     private var manualGraphicEqEnabled = false
@@ -76,6 +76,8 @@ class AudioService : Service() {
         private set
     private var lastStablePitch = 0f
     private var pitchConsecutiveFrames = 0
+    private var lastAudioFrame: ShortArray? = null
+    private var lastAudioFrameSize: Int = 0
 
     // Audio Output Monitoring
     private lateinit var audioManager: AudioManager
@@ -96,6 +98,7 @@ class AudioService : Service() {
         DiagLogger.log(DiagLogger.Level.INFO, "Service creating")
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         dspChain = DspChain(sampleRate)
+        onnyxModel = OnnyxSpeechEqModel(applicationContext)
         createNotificationChannel()
     }
 
@@ -326,7 +329,7 @@ class AudioService : Service() {
     fun setAutoClarityEnabled(enabled: Boolean) {
         isAutoClarityEnabled = enabled
         if (enabled) {
-            applyOnnyxVoiceCurve(lastDetectedPitch.takeIf { it > 0 })
+            applyOnnyxVoiceCurve(lastDetectedPitch.takeIf { it > 0 }, lastAudioFrame, lastAudioFrameSize)
         } else {
             applyManualGraphicEq()
         }
@@ -435,9 +438,15 @@ class AudioService : Service() {
                                 pitchConsecutiveFrames = 0
                             }
                         }
+                        lastAudioFrame = audioBuffer.copyOf(readCount)
+                        lastAudioFrameSize = readCount
+                        applyOnnyxVoiceCurve(lastStablePitch.takeIf { it > 0 }, lastAudioFrame, lastAudioFrameSize)
                     } else {
                         lastDetectedPitch = 0f
                     }
+                } else {
+                    lastAudioFrame = audioBuffer.copyOf(readCount)
+                    lastAudioFrameSize = readCount
                 }
 
                 dspChain.process(audioBuffer, readCount)
@@ -519,8 +528,11 @@ class AudioService : Service() {
         lastOnnyxAppliedGains = null
     }
 
-    private fun applyOnnyxVoiceCurve(pitchHz: Float?) {
+    private fun applyOnnyxVoiceCurve(pitchHz: Float?, audioFrame: ShortArray?, frameSize: Int) {
+        val frame = audioFrame ?: return applyManualGraphicEq()
         val recommended = onnyxModel.recommendVoiceCurve(
+            audioFrame = frame,
+            validSamples = frameSize,
             pitchHz = pitchHz,
             baseGainsDb = manualGraphicEqGains
         )
