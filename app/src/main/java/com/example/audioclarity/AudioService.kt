@@ -217,20 +217,19 @@ class AudioService : Service() {
                 return@thread
             }
 
+            val originalGain = dspChain.gainFactor
             try {
                 DiagLogger.log(DiagLogger.Level.INFO, "Playing back ${processedSnapshot.size} boosted samples.")
-                val originalGain = dspChain.gainFactor
                 dspChain.gainFactor = 0f
 
                 replayTrack.write(processedSnapshot, 0, processedSnapshot.size)
                 replayTrack.play()
                 Thread.sleep((processedSnapshot.size.toFloat() / sampleRate * 1000).toLong() + 100)
-                
-                dspChain.gainFactor = originalGain
 
             } catch (e: Exception) {
                 DiagLogger.logError("Replay failed", e)
             } finally {
+                dspChain.gainFactor = originalGain
                 replayTrack.release()
                 DiagLogger.log(DiagLogger.Level.INFO, "Replay finished.")
             }
