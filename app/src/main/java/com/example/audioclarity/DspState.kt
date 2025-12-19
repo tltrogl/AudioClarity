@@ -6,5 +6,6 @@ package com.example.audioclarity
 data class DspState(
     val isHpfEnabled: Boolean,
     val isSpeechEqEnabled: Boolean,
-    val isNoiseGateEnabled: Boolean
+    val isNoiseGateEnabled: Boolean,
+    val isGraphicEqEnabled: Boolean
 )

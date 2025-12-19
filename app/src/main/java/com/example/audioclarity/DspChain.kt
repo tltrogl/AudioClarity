@@ -13,6 +13,7 @@ class DspChain(private val sampleRate: Int) {
     @Volatile var isHpfEnabled: Boolean = true
     @Volatile var isSpeechEqEnabled: Boolean = false
     @Volatile var isNoiseGateEnabled: Boolean = false
+    @Volatile var isGraphicEqEnabled: Boolean = false
 
     // --- High Pass Filter State ---
     private var hpfLastIn: Float = 0f
@@ -32,6 +33,25 @@ class DspChain(private val sampleRate: Int) {
     
     // --- Noise Gate State ---
     private val noiseGateThreshold = 0.008f // RMS threshold, slightly higher than pure silence
+
+    // --- Graphic EQ (10-band) State ---
+    private val graphicEqFrequencies = GraphicEqConfig.BAND_FREQUENCIES.toFloatArray()
+    private val graphicEqBands = Array(graphicEqFrequencies.size) { BiquadState() }
+    private val graphicEqGainsDb = FloatArray(graphicEqFrequencies.size) { 0f }
+    private val graphicEqLock = Any()
+    @Volatile private var pendingGraphicEqGains: FloatArray? = null
+
+    data class BiquadState(
+        var b0: Float = 1f,
+        var b1: Float = 0f,
+        var b2: Float = 0f,
+        var a1: Float = 0f,
+        var a2: Float = 0f,
+        var x1: Float = 0f,
+        var x2: Float = 0f,
+        var y1: Float = 0f,
+        var y2: Float = 0f
+    )
 
     /**
      * Recalculates the coefficients for a peaking EQ filter.
@@ -66,7 +86,75 @@ class DspChain(private val sampleRate: Int) {
         eqA2 = (a2 / a0)
     }
 
+    fun setGraphicEqGains(gainsDb: FloatArray) {
+        pendingGraphicEqGains = gainsDb.copyOf()
+    }
+
+    private fun applyPendingGraphicEqGains() {
+        val gains = pendingGraphicEqGains ?: return
+        synchronized(graphicEqLock) {
+            val bandCount = min(gains.size, graphicEqBands.size)
+            for (i in 0 until bandCount) {
+                graphicEqGainsDb[i] = gains[i].coerceIn(GraphicEqConfig.MIN_GAIN_DB, GraphicEqConfig.MAX_GAIN_DB)
+                updateGraphicEqBand(i)
+            }
+            for (i in bandCount until graphicEqBands.size) {
+                graphicEqGainsDb[i] = 0f
+                updateGraphicEqBand(i)
+            }
+            pendingGraphicEqGains = null
+        }
+    }
+
+    private fun updateGraphicEqBand(index: Int) {
+        val gainDb = graphicEqGainsDb[index]
+        val centerFreq = graphicEqFrequencies[index]
+        if (kotlin.math.abs(gainDb) < 0.01f) {
+            graphicEqBands[index].apply {
+                b0 = 1f; b1 = 0f; b2 = 0f; a1 = 0f; a2 = 0f
+                x1 = 0f; x2 = 0f; y1 = 0f; y2 = 0f
+            }
+            return
+        }
+
+        val q = 1.1f
+        val w0 = 2.0f * PI.toFloat() * centerFreq / sampleRate
+        val alpha = sin(w0) / (2.0f * q)
+        val a = 10.0f.pow(gainDb / 40.0f)
+
+        val b0 = 1 + alpha * a
+        val b1 = -2 * cos(w0)
+        val b2 = 1 - alpha * a
+        val a0 = 1 + alpha / a
+        val a1 = -2 * cos(w0)
+        val a2 = 1 - alpha / a
+
+        graphicEqBands[index].apply {
+            this.b0 = (b0 / a0).toFloat()
+            this.b1 = (b1 / a0).toFloat()
+            this.b2 = (b2 / a0).toFloat()
+            this.a1 = (a1 / a0).toFloat()
+            this.a2 = (a2 / a0).toFloat()
+            x1 = 0f; x2 = 0f; y1 = 0f; y2 = 0f
+        }
+    }
+
+    private fun resetGraphicEqState() {
+        synchronized(graphicEqLock) {
+            graphicEqBands.forEach { band ->
+                if (band.y1 != 0f || band.y2 != 0f || band.x1 != 0f || band.x2 != 0f) {
+                    band.x1 = 0f; band.x2 = 0f; band.y1 = 0f; band.y2 = 0f
+                }
+            }
+        }
+    }
+
     fun process(buffer: ShortArray, size: Int) {
+        applyPendingGraphicEqGains()
+        if (!isGraphicEqEnabled) {
+            resetGraphicEqState()
+        }
+
         // --- Noise Gate Check (Buffer-level) ---
         if (isNoiseGateEnabled) {
             var rmsSumOfSquares = 0.0
@@ -116,10 +204,23 @@ class DspChain(private val sampleRate: Int) {
                 }
             }
 
-            // 3. Gain
+            // 3. Graphic EQ (Optional, full-band)
+            if (isGraphicEqEnabled) {
+                graphicEqBands.forEach { band ->
+                    val eqOut = (band.b0 * processed) + (band.b1 * band.x1) + (band.b2 * band.x2) -
+                        (band.a1 * band.y1) - (band.a2 * band.y2)
+                    band.x2 = band.x1
+                    band.x1 = processed
+                    band.y2 = band.y1
+                    band.y1 = eqOut
+                    processed = eqOut
+                }
+            }
+
+            // 4. Gain
             processed *= gainFactor
 
-            // 4. Hard Limiter (Always active for safety)
+            // 5. Hard Limiter (Always active for safety)
             processed = max(-1.0f, min(1.0f, processed))
 
             // Convert back to Short

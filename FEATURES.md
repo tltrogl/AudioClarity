@@ -30,6 +30,8 @@ Ear Scout is a **foreground listening assist** app for Android: it captures micr
   - Cuts low-frequency rumble (wind/engine/handling noise)
 - **Hard limiter (safety)**
   - Prevents clipping and reduces painful spikes at higher gain
+- **Full-band graphic EQ (10 bands, 31 Hz – 16 kHz)**
+  - Fine-tune tone across the entire spectrum
 - Optional (device-dependent) **Android system effects** when available:
   - **Automatic Gain Control (AGC)**
   - **Noise Suppression (NS)**

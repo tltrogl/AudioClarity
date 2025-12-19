@@ -25,6 +25,7 @@ This is a **user-visible** listening session that runs reliably in the backgroun
 - Adjustable gain (volume boost).
 - High-pass filter (cuts low rumble).
 - Noise gate (mutes output during quiet moments).
+- Full-spectrum 10-band graphic EQ (31 Hz → 16 kHz).
 - Optional Android system effects when supported (device-dependent):
   - Noise Suppressor (NS)
   - Acoustic Echo Canceler (AEC)
@@ -78,6 +79,7 @@ Use the **Calibrate** button in the main screen to run the built-in latency test
 4. Either:
    - Enable **Auto-Clarity** (speech enhancement), or
    - Use manual toggles (HPF / Gate / system effects)
+   - Open **Equalizer** to sculpt the full-band EQ
 5. Tap **Replay** to hear the last moments
 6. Tap **Stop** (in-app or notification)
 

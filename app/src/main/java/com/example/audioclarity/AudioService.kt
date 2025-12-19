@@ -115,6 +115,10 @@ class AudioService : Service() {
                     isAutoClarityEnabled = it.getBoolean("auto_clarity", false)
                     setNoiseGateEnabled(it.getBoolean("noise_gate", false))
                     calibratedLatencyMs = it.getInt("latency", -1)
+                    setGraphicEqEnabled(it.getBoolean("graphic_eq_enabled", false))
+                    it.getFloatArray("graphic_eq_gains")?.let { gains ->
+                        setGraphicEqGains(gains)
+                    }
                 }
                 startAudioPassthrough()
             }
@@ -293,6 +297,14 @@ class AudioService : Service() {
         dspChain.gainFactor = gain
     }
 
+    fun setGraphicEqEnabled(enabled: Boolean) {
+        dspChain.isGraphicEqEnabled = enabled
+    }
+
+    fun setGraphicEqGains(gainsDb: FloatArray) {
+        dspChain.setGraphicEqGains(gainsDb)
+    }
+
     fun setHpfEnabled(enabled: Boolean) {
         if (!isAutoClarityEnabled) {
             dspChain.isHpfEnabled = enabled
@@ -402,7 +414,14 @@ class AudioService : Service() {
                 dspChain.process(audioBuffer, readCount)
                 track.write(audioBuffer, 0, readCount)
 
-                _dspState.postValue(DspState(dspChain.isHpfEnabled, dspChain.isSpeechEqEnabled, dspChain.isNoiseGateEnabled))
+                _dspState.postValue(
+                    DspState(
+                        dspChain.isHpfEnabled,
+                        dspChain.isSpeechEqEnabled,
+                        dspChain.isNoiseGateEnabled,
+                        dspChain.isGraphicEqEnabled
+                    )
+                )
                 _diagnosticsData.postValue(DiagnosticsData(sampleRate, bufferSize, lastDetectedPitch))
 
             } else {

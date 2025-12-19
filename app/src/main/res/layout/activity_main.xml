@@ -83,6 +83,12 @@
         android:text="Calibrate Latency" />
 
     <Button
+        android:id="@+id/btnEqualizer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/equalizer_nav" />
+
+    <Button
         android:id="@+id/btnDiagnostics"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
