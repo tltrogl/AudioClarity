@@ -34,6 +34,7 @@ This is a **user-visible** listening session that runs reliably in the backgroun
 - Always-on limiter (prevents harsh spikes at higher gain).
 - Automatically stops passthrough if headphones disconnect (prevents speaker feedback loops).
 - Persistent settings: restores your last configuration automatically.
+- Replay gain safeguards ensure passthrough volume is restored even if boosted playback encounters an error.
 
 ### Developer/Diagnostics
 - Diagnostics screen: output device, sample rate, buffer size, pitch estimate, etc.
